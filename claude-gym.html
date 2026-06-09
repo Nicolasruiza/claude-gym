@@ -206,6 +206,11 @@ svg{display:block;}
   margin-top:16px;background:#0c0c0e;color:var(--accent);border-radius:100px;
   padding:12px 24px;font-weight:700;font-size:14px;display:inline-flex;align-items:center;gap:8px;
 }
+.done-chip{
+  margin-top:16px;display:inline-flex;align-items:center;gap:6px;
+  background:rgba(212,245,60,0.10);border:1px solid rgba(212,245,60,0.25);
+  color:var(--accent);border-radius:100px;padding:10px 20px;font-size:14px;font-weight:700;
+}
 
 /* Muscle recovery grid */
 .muscle-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
@@ -2061,9 +2066,22 @@ async function renderHome() {
   State.draftSession = draft;
   const cyc = cycleTodayGoal();
   if (cyc && cyc.suggestCore) { draft.type = 'Core Strength'; State.draftSession = buildDraftSession(State.profile, State.sessions, 'Core Strength'); }
-  document.getElementById('today-goal-label').textContent = cyc ? cyc.goal : State.draftSession.goal;
-  document.getElementById('today-session-type').textContent = State.draftSession.type;
-  document.getElementById('today-session-meta').textContent = `${State.draftSession.duration} min · ${State.draftSession.exercises.length} exercises`;
+
+  const todayDone = State.sessions.find(s => s.completedAt && s.date === todayStr());
+  const card = document.getElementById('today-session-card');
+  if (todayDone) {
+    document.getElementById('today-goal-label').textContent = todayDone.goal || todayDone.type || 'Done';
+    document.getElementById('today-session-type').textContent = todayDone.type;
+    const totalSets = (todayDone.exercises||[]).reduce((n,e)=>(n+(e.sets||[]).filter(s=>s.completed).length),0);
+    document.getElementById('today-session-meta').textContent = `${totalSets} sets completed`;
+    document.getElementById('btn-start-session').outerHTML = `<div class="done-chip"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg> Completed</div>`;
+    card.style.opacity = '0.75';
+  } else {
+    card.style.opacity = '';
+    document.getElementById('today-goal-label').textContent = cyc ? cyc.goal : State.draftSession.goal;
+    document.getElementById('today-session-type').textContent = State.draftSession.type;
+    document.getElementById('today-session-meta').textContent = `${State.draftSession.duration} min · ${State.draftSession.exercises.length} exercises`;
+  }
 
   renderAIBanner(recoveryMap);
 }
@@ -3845,7 +3863,7 @@ function renderCycleBanner() {
         </div>
         <div style="font-size:13px;color:var(--text2);margin-top:4px;">Track your phase to get training insights tailored to your cycle.</div>
       </button>`;
-    document.getElementById('cycle-setup-card').addEventListener('click', () => { navigate('cycle'); renderCycle(); });
+    document.getElementById('cycle-setup-card').addEventListener('click', () => { navigate('cycleSettings'); renderCycleSettings(); });
     return;
   }
   const def = cp.def;
@@ -3878,21 +3896,8 @@ function renderCycle() {
   const cp = cyclePhaseFor(State.profile);
   const el = document.getElementById('cycle-content');
   if (!cp) {
-    el.innerHTML = `
-      <div class="empty-note" style="margin-bottom:20px;">Enter your last period start date to begin tracking.</div>
-      <div class="field-label">Last period start date</div>
-      <input class="date-input" id="cyc-inline-date" type="date" value="${State.profile.lastPeriodStart||''}" style="width:100%;margin-bottom:16px;">
-      <div class="field-label">Average cycle length (days)</div>
-      <input class="text-input" id="cyc-inline-len" type="number" min="21" max="35" value="${State.profile.cycleLength||28}" style="margin-bottom:20px;">
-      <button class="btn primary block" id="cyc-inline-save">Start Tracking</button>`;
-    document.getElementById('cyc-inline-save').addEventListener('click', async () => {
-      const d = document.getElementById('cyc-inline-date').value;
-      if (!d) { showToast('Pick a date to continue.', 2000); return; }
-      State.profile.lastPeriodStart = d;
-      State.profile.cycleLength = parseInt(document.getElementById('cyc-inline-len').value,10)||28;
-      await DB.putProfile(State.profile);
-      renderCycle();
-    });
+    navigate('cycleSettings');
+    renderCycleSettings();
     return;
   }
   const def = cp.def;
