@@ -3087,6 +3087,7 @@ function renderSettings() {
 
     <div class="set-group-label">Profile</div>
     <div class="set-group">
+      ${settingsRow('profilename','Name', p.name||'Athlete')}
       ${settingsRow('gender','Gender', p.gender ? p.gender.charAt(0).toUpperCase()+p.gender.slice(1) : 'Not set')}
     </div>
     <button class="btn block" id="btn-delete-profile" style="margin-top:8px;background:rgba(255,59,78,0.12);color:#ff3b4e;border:1px solid rgba(255,59,78,0.3);border-radius:14px;padding:16px;font-size:15px;font-weight:600;">Delete Profile</button>
@@ -3135,8 +3136,16 @@ function handleSettingsRow(id) {
     case 'gym': openTextScreen('My Gym', p.gymName||'', false, async v => { p.gymName=v.trim()||'My Gym'; await DB.putProfile(p); }); break;
     case 'apikey': openTextScreen('API Key', p.apiKey||'', true, async v => {
       p.apiKey=v.trim(); await DB.putProfile(p); await DB.setAICache(p.id, ''); }); break;
+    case 'profilename': openTextScreen('Name', p.name||'', false, async v => {
+      if (!v.trim()) return;
+      p.name = v.trim();
+      State.profile = p;
+      await DB.putProfile(p);
+      renderSettings();
+      showToast('Name updated.', 1800);
+    }); break;
     case 'gender': openOptionsScreen('Gender',
-      [['Male',''],['Female',''],['Other','']],
+      [['Male',''],['Female','']],
       p.gender ? p.gender.charAt(0).toUpperCase()+p.gender.slice(1) : 'Male',
       async v => {
         p.gender = v.toLowerCase();
@@ -3273,28 +3282,16 @@ function renderProgramSetup() {
       document.getElementById('ps-day-summary').textContent = `${n} gym day${n!==1?'s':''} · ${7-n} open day${7-n!==1?'s':''}`;
     }
     drawGrid();
-    document.getElementById('ps-next2').addEventListener('click', () => {
+    document.getElementById('ps-next2').addEventListener('click', async () => {
       if (!data.gymDays.length) { showToast('Pick at least one gym day.', 2200); return; }
       data.daysPerWeek = data.gymDays.length;
-      step = 3; State.programStep = 3; renderStep3();
-    });
-  }
-  function renderStep3() {
-    const label = data.type === 'Custom' ? (data.sessions||[]).join('/') : (data.type==='Push/Pull/Legs'?'PPL':data.type);
-    wrap.innerHTML = `<div class="wizard-step">
-      <div class="section-title">Confirm</div>
-      <div class="card"><h3 style="font-size:24px;">${label} · ${data.daysPerWeek} days per week</h3></div>
-      <button class="btn primary block" id="ps-save" style="margin-top:24px;">Save Program</button>
-    </div>`;
-    document.getElementById('ps-save').addEventListener('click', async () => {
       const split = { type: data.type, sessions: data.type==='Custom' ? data.sessions : (SPLIT_ROTATIONS[data.type]||[]) };
-      // In wizard context State.profile is not yet loaded — fetch from DB
       if (!State.profile && State.tempNewProfileId) {
         State.profile = await DB.getProfile(State.tempNewProfileId);
       }
       State.profile.split = split;
       State.profile.daysPerWeek = data.daysPerWeek;
-      if (data.gymDays) State.profile.gymDays = [...data.gymDays];
+      State.profile.gymDays = [...data.gymDays];
       await DB.putProfile(State.profile);
       State.programStep = 1;
       if (State.programSetupContext === 'wizard') {
@@ -3306,8 +3303,7 @@ function renderProgramSetup() {
     });
   }
   if (step === 1) renderStep1();
-  else if (step === 2) renderStep2();
-  else renderStep3();
+  else renderStep2();
 }
 
 /* ============================================================
@@ -3361,9 +3357,8 @@ const GOAL_DEFS = [
 const GENDER_DEFS = [
   { v:'Male',   icon:'♂' },
   { v:'Female', icon:'♀' },
-  { v:'Other',  icon:'◇' },
 ];
-const GENDER_COLORS = { Male:'var(--accent)', Female:'var(--pink)', Other:'var(--teal)' };
+const GENDER_COLORS = { Male:'var(--accent)', Female:'var(--pink)' };
 
 function renderWizard() {
   const segs = document.querySelectorAll('#screen-wizard .seg');
@@ -3875,9 +3870,21 @@ function renderCycle() {
   const cp = cyclePhaseFor(State.profile);
   const el = document.getElementById('cycle-content');
   if (!cp) {
-    el.innerHTML = `<div class="empty-note">Set your last period start date in Cycle Settings to begin tracking.</div>
-      <button class="btn primary block" id="cyc-go-settings">Open Cycle Settings</button>`;
-    document.getElementById('cyc-go-settings').addEventListener('click', () => { navigate('cycleSettings'); renderCycleSettings(); });
+    el.innerHTML = `
+      <div class="empty-note" style="margin-bottom:20px;">Enter your last period start date to begin tracking.</div>
+      <div class="field-label">Last period start date</div>
+      <input class="date-input" id="cyc-inline-date" type="date" value="${State.profile.lastPeriodStart||''}" style="width:100%;margin-bottom:16px;">
+      <div class="field-label">Average cycle length (days)</div>
+      <input class="text-input" id="cyc-inline-len" type="number" min="21" max="35" value="${State.profile.cycleLength||28}" style="margin-bottom:20px;">
+      <button class="btn primary block" id="cyc-inline-save">Start Tracking</button>`;
+    document.getElementById('cyc-inline-save').addEventListener('click', async () => {
+      const d = document.getElementById('cyc-inline-date').value;
+      if (!d) { showToast('Pick a date to continue.', 2000); return; }
+      State.profile.lastPeriodStart = d;
+      State.profile.cycleLength = parseInt(document.getElementById('cyc-inline-len').value,10)||28;
+      await DB.putProfile(State.profile);
+      renderCycle();
+    });
     return;
   }
   const def = cp.def;
