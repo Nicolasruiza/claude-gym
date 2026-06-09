@@ -1369,6 +1369,7 @@ const DB = {
   async putProfile(profile) { const s = await tx('profiles','readwrite'); return reqToPromise(s.put(profile)); },
   async getProfile(id) { const s = await tx('profiles','readonly'); return reqToPromise(s.get(id)); },
   async getAllProfiles() { const s = await tx('profiles','readonly'); return reqToPromise(s.getAll()); },
+  async deleteProfile(id) { const s = await tx('profiles','readwrite'); return reqToPromise(s.delete(id)); },
 
   async putSession(session) { const s = await tx('sessions','readwrite'); return reqToPromise(s.put(session)); },
   async deleteSession(id) { const s = await tx('sessions','readwrite'); return reqToPromise(s.delete(id)); },
@@ -3083,9 +3084,18 @@ function renderSettings() {
     <div class="set-group">
       ${settingsRow('cycle','Cycle Tracking', cyclePhaseFor(p) ? cyclePhaseFor(p).def.label : 'Set up')}
     </div>` : ''}
+
+    <div class="set-group-label">Profile</div>
+    <div class="set-group">
+      ${settingsRow('gender','Gender', p.gender ? p.gender.charAt(0).toUpperCase()+p.gender.slice(1) : 'Not set')}
+    </div>
+    <button class="btn block" id="btn-delete-profile" style="margin-top:8px;background:rgba(255,59,78,0.12);color:#ff3b4e;border:1px solid rgba(255,59,78,0.3);border-radius:14px;padding:16px;font-size:15px;font-weight:600;">Delete Profile</button>
+    <div style="height:40px;"></div>
   `;
   el.querySelectorAll('[data-srow]').forEach(btn => btn.addEventListener('click', () => handleSettingsRow(btn.dataset.srow)));
   el.querySelectorAll('[data-stoggle]').forEach(btn => btn.addEventListener('click', () => handleSettingsToggle(btn.dataset.stoggle, btn)));
+  const delBtn = document.getElementById('btn-delete-profile');
+  if (delBtn) delBtn.addEventListener('click', confirmDeleteProfile);
 }
 
 async function handleSettingsToggle(id, btn) {
@@ -3125,7 +3135,31 @@ function handleSettingsRow(id) {
     case 'gym': openTextScreen('My Gym', p.gymName||'', false, async v => { p.gymName=v.trim()||'My Gym'; await DB.putProfile(p); }); break;
     case 'apikey': openTextScreen('API Key', p.apiKey||'', true, async v => {
       p.apiKey=v.trim(); await DB.putProfile(p); await DB.setAICache(p.id, ''); }); break;
+    case 'gender': openOptionsScreen('Gender',
+      [['Male',''],['Female',''],['Other','']],
+      p.gender ? p.gender.charAt(0).toUpperCase()+p.gender.slice(1) : 'Male',
+      async v => {
+        p.gender = v.toLowerCase();
+        p.avatarColor = GENDER_COLORS[v] || p.avatarColor;
+        State.profile = p;
+        await DB.putProfile(p);
+        renderSettings();
+      }); break;
   }
+}
+
+async function confirmDeleteProfile() {
+  const p = State.profile;
+  const confirmed = window.confirm(`Delete "${p.name}"? This will remove all their workout history. This cannot be undone.`);
+  if (!confirmed) return;
+  await DB.deleteProfile(p.id);
+  State.profile = null;
+  State.activeWorkout = null;
+  State.draftSession = null;
+  State.profiles = await DB.getAllProfiles();
+  navigate('profileSelect');
+  renderProfileSelect();
+  showToast(`${p.name}'s profile deleted.`, 2400);
 }
 
 function openOptionsScreen(title, options, selected, onSelect) {
@@ -3755,6 +3789,7 @@ function drawPreCheck() {
     State.pendingNutrition = { pre: { state:c.state, foodType:c.foodType }, post:null };
     closeSheet('sheet-precheck');
     navigate('workout');
+    renderWorkout();
   });
 }
 function openPostSessionCheckin(onDone) {
