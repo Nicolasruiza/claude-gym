@@ -760,6 +760,9 @@ svg{display:block;}
     <div class="sub" id="workout-sub" style="margin-bottom:6px;">6 exercises · Milton Community Centre</div>
     <div id="workout-phase-note"></div>
   </div>
+  <div class="section" id="workout-cycle-section" style="display:none;padding-top:0;">
+    <div id="workout-cycle-host"></div>
+  </div>
   <div class="meta-pills" id="workout-meta-pills"></div>
   <div class="target-bar" id="workout-target-bar"></div>
   <div class="section" style="margin-bottom:120px;">
@@ -2041,6 +2044,7 @@ const ROUTE_SCREENS = {
 const NAV_ROUTES = ['workout','body','insights'];
 
 function navigate(route) {
+  if (route !== State.route) State.prevRoute = State.route;
   State.route = route;
   for (const id of Object.values(ROUTE_SCREENS)) {
     document.getElementById(id).classList.remove('active');
@@ -2348,6 +2352,30 @@ function checkSkipDetection(completedType) {
    RENDER: WORKOUT
    ============================================================ */
 /* CHANGE C: phase adjustment note (female profiles only) */
+function renderWorkoutCycleCard() {
+  const sec = document.getElementById('workout-cycle-section');
+  const host = document.getElementById('workout-cycle-host');
+  if (!isFemale(State.profile)) { sec.style.display = 'none'; return; }
+  const cp = cyclePhaseFor(State.profile);
+  if (!cp) { sec.style.display = 'none'; return; }
+  sec.style.display = 'block';
+  const def = cp.def;
+  const len = State.profile.cycleLength || 28;
+  host.innerHTML = `
+    <div class="cycle-banner" style="background:${def.dimColor};border:1px solid ${def.borderColor};">
+      <div class="cbtop">
+        <span class="cbdot" style="background:${def.color}"></span>
+        <span style="color:${def.color}">${def.label}</span>
+        <span class="cbday">Day ${cp.day} of ${len}</span>
+      </div>
+      <div class="cbinsight">${def.rirNote}</div>
+      <button id="workout-cycle-settings-link" style="margin-top:10px;background:none;border:none;padding:0;font-size:12px;font-weight:700;color:${def.color};display:flex;align-items:center;gap:4px;">
+        Cycle Settings
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+    </div>`;
+  document.getElementById('workout-cycle-settings-link').addEventListener('click', () => { navigate('cycleSettings'); renderCycleSettings(); });
+}
 function renderPhaseNote() {
   const el = document.getElementById('workout-phase-note');
   if (!el) return;
@@ -2588,6 +2616,7 @@ function renderWorkout() {
   setAvatar('workout-avatar', State.profile);
   document.getElementById('workout-pname').textContent = State.profile.name || 'Athlete';
   document.getElementById('workout-title').textContent = draft.type;
+  renderWorkoutCycleCard();
   const listEl = document.getElementById('workout-exercise-list');
   const targetBar = document.getElementById('workout-target-bar');
   if (isCardioType(draft.type)) {
@@ -4433,7 +4462,12 @@ document.getElementById('goal-back').addEventListener('click', () => navigate('w
 document.getElementById('ai-plan-back').addEventListener('click', () => { navigate('goal'); renderGoalScreen(); });
 document.getElementById('options-back').addEventListener('click', () => navigate('settings'));
 document.getElementById('cycle-settings-btn').addEventListener('click', () => { navigate('cycleSettings'); renderCycleSettings(); });
-document.getElementById('cycle-settings-back').addEventListener('click', () => navigate('settings'));
+document.getElementById('cycle-settings-back').addEventListener('click', () => {
+  let target = State.prevRoute || 'insights';
+  if (target === 'cycle' && !cyclePhaseFor(State.profile)) target = 'insights';
+  if (target === 'cycleSettings') target = 'insights';
+  navigate(target);
+});
 document.getElementById('phase-guide-back').addEventListener('click', () => { navigate('cycleSettings'); renderCycleSettings(); });
 document.getElementById('howto-back').addEventListener('click', () => {
   navigate(howToReturnRoute || 'workout');
