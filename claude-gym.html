@@ -493,9 +493,6 @@ svg{display:block;}
 }
 .pill-dropdown button:last-child{border-bottom:none;}
 .pill-dropdown button .chev{color:var(--text2);}
-.dd-profile-head{padding:14px 16px;border-bottom:1px solid var(--border);}
-.dd-profile-name{font-size:14px;font-weight:700;}
-.dd-profile-sub{font-size:11px;color:var(--text2);margin-top:2px;}
 
 /* Swap pill */
 .swap-pill{
@@ -748,16 +745,13 @@ svg{display:block;}
     </button>
     <span class="workout-timer" id="workout-timer" style="display:none;">00:00</span>
     <div class="title-menu-wrap">
-      <button class="back-btn" id="home-gear-btn" style="background:var(--bg3);">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <button class="profile-pill" id="home-gear-btn">
+        <span class="avatar" id="workout-avatar"></span>
+        <span class="name" id="workout-pname">Athlete</span>
       </button>
       <div class="pill-dropdown" id="title-dropdown">
-        <div class="dd-profile-head">
-          <div class="dd-profile-name" id="dd-profile-name">Athlete</div>
-          <div class="dd-profile-sub">Settings</div>
-        </div>
-        <button id="dd-log">Workout Log <span class="chev">›</span></button>
         <button id="dd-settings">Settings <span class="chev">›</span></button>
+        <button id="dd-log">Export <span class="chev">›</span></button>
       </div>
     </div>
   </div>
@@ -2591,6 +2585,8 @@ function isRestDayToday() {
 function renderWorkout() {
   if (!State.draftSession) State.draftSession = buildDraftSession(State.profile, State.sessions);
   const draft = State.draftSession;
+  setAvatar('workout-avatar', State.profile);
+  document.getElementById('workout-pname').textContent = State.profile.name || 'Athlete';
   document.getElementById('workout-title').textContent = draft.type;
   const listEl = document.getElementById('workout-exercise-list');
   const targetBar = document.getElementById('workout-target-bar');
@@ -4446,9 +4442,7 @@ document.getElementById('howto-back').addEventListener('click', () => {
 
 document.getElementById('home-gear-btn').addEventListener('click', (e) => {
   e.stopPropagation();
-  const dd = document.getElementById('title-dropdown');
-  document.getElementById('dd-profile-name').textContent = (State.profile && State.profile.name) || 'Athlete';
-  dd.classList.toggle('open');
+  document.getElementById('title-dropdown').classList.toggle('open');
 });
 document.getElementById('dd-log').addEventListener('click', () => { document.getElementById('title-dropdown').classList.remove('open'); navigate('log'); });
 document.getElementById('dd-settings').addEventListener('click', () => { document.getElementById('title-dropdown').classList.remove('open'); navigate('settings'); });
