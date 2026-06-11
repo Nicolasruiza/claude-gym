@@ -26,7 +26,7 @@
   --teal:#3be8d4;
   --teal-dim:rgba(59,232,212,0.10);
   --text:#f2f2f4;
-  --text2:#7a7a8a;
+  --text2:#9c9caa;
   --text3:#3e3e4a;
   --border:#1e1e28;
   --card:#161618;
@@ -385,6 +385,18 @@ svg{display:block;}
 .muscle-row .info .t{font-size:11px;color:var(--text2);margin-top:2px;}
 .muscle-row .bar{height:4px;border-radius:4px;background:var(--bg4);margin-top:8px;overflow:hidden;width:100%;}
 .muscle-row .status{font-size:11px;font-weight:700;text-transform:uppercase;}
+.muscle-group-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text2);margin:18px 0 10px;}
+.muscle-group-title:first-child{margin-top:0;}
+.muscle-card-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.muscle-card{
+  background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;
+  text-align:left;
+}
+.muscle-card .mc-top{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+.muscle-card .mc-name{font-size:13px;font-weight:600;}
+.muscle-card .mc-status{font-size:10px;font-weight:700;text-transform:uppercase;flex-shrink:0;}
+.muscle-card .bar{height:4px;border-radius:4px;background:var(--bg4);margin-top:8px;overflow:hidden;width:100%;}
+.muscle-card .mc-sub{font-size:11px;color:var(--text2);margin-top:6px;}
 
 /* Log screen */
 .export-row{display:flex;gap:10px;padding:0 20px 20px;}
@@ -756,7 +768,12 @@ svg{display:block;}
     </div>
   </div>
   <div class="section" style="padding-bottom:0;">
-    <h2 id="workout-title" style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:0.03em;">Push Day</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <h2 id="workout-title" style="font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:0.03em;">Push Day</h2>
+      <span id="workout-done-check" style="display:none;flex-shrink:0;width:32px;height:32px;border-radius:50%;background:rgba(212,245,60,0.12);border:1px solid rgba(212,245,60,0.3);align-items:center;justify-content:center;color:var(--accent);">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+      </span>
+    </div>
     <div class="sub" id="workout-sub" style="margin-bottom:6px;">6 exercises · Milton Community Centre</div>
     <div id="workout-phase-note"></div>
   </div>
@@ -1270,6 +1287,12 @@ const MUSCLE_GROUPS = [
   { key: "core", name: "Core", regions: ["abs","obliques"] },
   { key: "traps", name: "Traps", regions: ["trap-left","trap-right"] },
 ];
+const MUSCLE_PPL_GROUPS = {
+  Push: ['chest','shoulders','triceps'],
+  Pull: ['lats','biceps','traps'],
+  Legs: ['quads','hamstrings','glutes','calves'],
+  Core: ['core'],
+};
 const MUSCLE_REGION_MAP = {}; // region -> muscleKey
 MUSCLE_GROUPS.forEach(g => g.regions.forEach(r => MUSCLE_REGION_MAP[r] = g.key));
 
@@ -1425,7 +1448,7 @@ function applyPhaseAdjustments(plan, phase) {
 
 function isFemale(profile) { return profile && profile.gender === 'female'; }
 function cyclePhaseFor(profile) {
-  if (!isFemale(profile) || !profile.lastPeriodStart) return null;
+  if (!isFemale(profile) || profile.cycleTrackingDisabled || !profile.lastPeriodStart) return null;
   const r = getCyclePhase(profile.lastPeriodStart, profile.cycleLength || 28);
   return { ...r, def: CYCLE_PHASES[r.phase] };
 }
@@ -2611,10 +2634,18 @@ function isRestDayToday() {
 }
 
 function renderWorkout() {
-  if (!State.draftSession) State.draftSession = buildDraftSession(State.profile, State.sessions);
-  const draft = State.draftSession;
   setAvatar('workout-avatar', State.profile);
   document.getElementById('workout-pname').textContent = State.profile.name || 'Athlete';
+
+  const todaySession = State.sessions.find(s => s.completedAt && s.date === todayStr());
+  if (todaySession && !State.draftSession) {
+    renderWorkoutDoneState(todaySession);
+    return;
+  }
+  document.getElementById('workout-done-check').style.display = 'none';
+
+  if (!State.draftSession) State.draftSession = buildDraftSession(State.profile, State.sessions);
+  const draft = State.draftSession;
   document.getElementById('workout-title').textContent = draft.type;
   renderWorkoutCycleCard();
   const listEl = document.getElementById('workout-exercise-list');
@@ -2640,6 +2671,22 @@ function renderWorkout() {
   document.querySelector('.fixed-bottom-btn').style.display = '';
   renderExerciseList();
   if (draft.startedAt) { startWorkoutTimer(); ensureFinishButton(); }
+}
+
+function renderWorkoutDoneState(session) {
+  document.getElementById('workout-title').textContent = session.type;
+  document.getElementById('workout-done-check').style.display = 'flex';
+  document.getElementById('workout-sub').textContent = `${(session.exercises||[]).length} exercises · ${State.profile.gymName||'My Gym'}`;
+  document.getElementById('workout-phase-note').innerHTML = '';
+  document.getElementById('workout-cycle-section').style.display = 'none';
+  document.getElementById('workout-meta-pills').innerHTML = '';
+  document.getElementById('workout-target-bar').innerHTML = '';
+  document.querySelector('.fixed-bottom-btn').style.display = 'none';
+  document.getElementById('workout-exercise-list').innerHTML = `
+    <div class="cardio-card" style="text-align:center;">
+      <div class="cch" style="font-size:24px;color:var(--accent);">Workout Complete</div>
+      <p style="color:var(--text2);font-size:13px;margin:6px 0 0;">Nice work — see you next session.</p>
+    </div>`;
 }
 
 function renderRestDayCard() {
@@ -3192,22 +3239,25 @@ function renderBody() {
   window.__lastRecMap = recoveryMap;
 
   const listEl = document.getElementById('muscle-list');
-  listEl.innerHTML = MUSCLE_GROUPS.map(g => {
-    const rec = recoveryMap[g.key] || {status:'fresh', daysAgo:null};
-    const lastTrained = rec.lastDate ? `${rec.daysAgo}d ago` : 'Never';
-    const pct = rec.status === 'fresh' ? 100 : rec.status === 'ready' ? 60 : 15;
-    const col = bodyStatusColor(rec.status);
-    return `<button class="muscle-row" data-muscle="${g.key}">
-      <div class="micon">${muscleIcon(g.key)}</div>
-      <div class="info">
-        <div class="n">${g.name}</div>
-        <div class="t">Last trained: ${lastTrained}</div>
+  const groupsByKey = {};
+  MUSCLE_GROUPS.forEach(g => groupsByKey[g.key] = g);
+  listEl.innerHTML = Object.entries(MUSCLE_PPL_GROUPS).map(([groupName, keys]) => {
+    const cards = keys.map(key => {
+      const g = groupsByKey[key];
+      if (!g) return '';
+      const rec = recoveryMap[g.key] || {status:'fresh', daysAgo:null};
+      const lastTrained = rec.lastDate ? `${rec.daysAgo}d ago` : 'Never';
+      const pct = rec.status === 'fresh' ? 100 : rec.status === 'ready' ? 60 : 15;
+      const col = bodyStatusColor(rec.status);
+      return `<button class="muscle-card" data-muscle="${g.key}">
+        <div class="mc-top"><span class="mc-name">${g.name}</span><span class="mc-status" style="color:${col}">${bodyStatusLabel(rec.status)}</span></div>
         <div class="bar"><div class="bar-fill" style="width:${pct}%;background:${col}"></div></div>
-      </div>
-      <div class="status" style="color:${col}">${bodyStatusLabel(rec.status)}</div>
-    </button>`;
+        <div class="mc-sub">Last trained: ${lastTrained}</div>
+      </button>`;
+    }).join('');
+    return `<div class="muscle-group-title">${groupName}</div><div class="muscle-card-grid">${cards}</div>`;
   }).join('');
-  listEl.querySelectorAll('.muscle-row').forEach(row => {
+  listEl.querySelectorAll('.muscle-card').forEach(row => {
     row.addEventListener('click', () => openMuscleHistory(row.dataset.muscle));
   });
 
@@ -4268,7 +4318,7 @@ function showInterferenceWarning(onProceed) {
 function renderCycleBanner() {
   const sec = document.getElementById('cycle-banner-section');
   const host = document.getElementById('cycle-banner-host');
-  if (!isFemale(State.profile)) { sec.style.display='none'; return; }
+  if (!isFemale(State.profile) || State.profile.cycleTrackingDisabled) { sec.style.display='none'; return; }
   sec.style.display='block';
   const cp = cyclePhaseFor(State.profile);
   if (!cp || State.profile.showCycleBanner === false) {
@@ -4342,7 +4392,13 @@ function renderCycleSettings() {
   const len = p.cycleLength || 28;
   const showSymptoms = cp && cp.phase === 'menstruation';
   const nearPeriod = !cp || cp.phase==='menstruation' || cp.day > (len-2);
+  const disabled = !!p.cycleTrackingDisabled;
   el.innerHTML = `
+    <div class="settings-row" style="margin-bottom:14px;">
+      <span class="l">I don't track my cycle (e.g. menopause)</span>
+      <div class="toggle-switch ${disabled?'on':''}" id="cs-disable-toggle"><div class="knob"></div></div>
+    </div>
+    ${disabled ? `<p style="color:var(--text2);font-size:13px;line-height:1.5;">Cycle tracking is turned off. Your training plan will not be adjusted based on cycle phase, and the cycle banner won't be shown.</p>` : `
     ${cp ? `<div class="cycle-status-card" style="border-left:4px solid ${cp.def.color}">
       <div class="csphase" style="color:${cp.def.color}">${cp.def.label}</div>
       <div class="csmeta">Day ${cp.day} of ${len} · ~${len-cp.day+1} days until next period</div>
@@ -4367,7 +4423,14 @@ function renderCycleSettings() {
       <button class="btn primary block" id="sym-save" style="margin-top:16px;">Save Symptoms</button>
     ` : ''}
     <button class="btn ghost block" id="cs-guide" style="margin-top:18px;">Learn how your cycle affects training →</button>
+    `}
   `;
+  document.getElementById('cs-disable-toggle').addEventListener('click', async (e) => {
+    p.cycleTrackingDisabled = !p.cycleTrackingDisabled;
+    await DB.putProfile(p);
+    renderCycleSettings();
+  });
+  if (disabled) return;
   document.getElementById('cs-started').addEventListener('click', async () => {
     p.lastPeriodStart = todayStr(); await DB.putProfile(p); renderCycleSettings(); showToast('Period start set to today.', 2200);
   });
