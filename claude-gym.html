@@ -246,6 +246,11 @@ svg{display:block;}
   display:flex;gap:14px;align-items:center;background:var(--card);border:1px solid var(--border);
   border-radius:18px;padding:12px;margin-bottom:10px;position:relative;
 }
+.exercise-card.done{border-color:var(--accent);background:rgba(212,245,60,0.06);}
+.exercise-card .done-badge{
+  position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:50%;
+  background:var(--accent);color:#0c0c0e;display:flex;align-items:center;justify-content:center;
+}
 .exercise-card .thumb{
   width:64px;height:64px;border-radius:12px;background:var(--bg3);flex-shrink:0;position:relative;overflow:hidden;
   display:flex;align-items:center;justify-content:center;background-size:cover;background-position:center;
@@ -310,6 +315,7 @@ svg{display:block;}
   content:'';position:absolute;inset:0;background:linear-gradient(0deg, rgba(20,20,22,1), transparent 60%);
 }
 .ex-hero .ex-hero-content{position:relative;z-index:2;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;width:100%;}
+.ex-hero .back-btn{background:rgba(12,12,14,0.55)!important;border:1px solid rgba(255,255,255,0.22)!important;backdrop-filter:blur(6px);box-shadow:0 2px 10px rgba(0,0,0,0.35);}
 .ex-hero h2{font-size:26px;}
 .howto-btn{
   background:var(--bg3);border:1px solid var(--border);color:var(--text);border-radius:100px;padding:9px 16px;
@@ -440,6 +446,9 @@ svg{display:block;}
 .tile-grid{display:grid;gap:10px;}
 .tile-grid.cols2{grid-template-columns:1fr 1fr;}
 .tile-grid.cols3{grid-template-columns:1fr 1fr 1fr;}
+.tile-grid.cols1{grid-template-columns:1fr;}
+.tile-opt.row{flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;gap:4px;padding:16px;}
+.tile-opt.row .t{margin-right:10px;}
 .tile-opt{
   padding:18px 12px;background:var(--card);border:1px solid var(--border);border-radius:14px;
   text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;
@@ -1891,6 +1900,15 @@ function lastSessionWasCoreWithin24h(sessions) {
   return daysBetween(last.date, new Date()) < 1;
 }
 
+// Starting weight estimates for exercises with no logged history, by equipment + experience tier
+const SEED_WEIGHTS = {
+  barbell:    { new: 45,  some: 65,  experienced: 95 },
+  dumbbell:   { new: 10,  some: 20,  experienced: 30 },
+  cable:      { new: 20,  some: 35,  experienced: 50 },
+  machine:    { new: 20,  some: 40,  experienced: 60 },
+  bodyweight: { new: 0,   some: 0,   experienced: 0 },
+};
+
 // Build today's draft session: type, goal, duration, exercise list
 function buildDraftSession(profile, sessions, overrideType, overrideDuration) {
   const goal = profile.defaultGoal || 'Hypertrophy';
@@ -1919,9 +1937,14 @@ function buildDraftSession(profile, sessions, overrideType, overrideDuration) {
   const exercises = [...mainIds, ...coreIds].map((id, i) => {
     const def = exById(id);
     const last = lastSessionForExercise(id, sessions);
-    let sets;
+    let sets, isNewExercise = false;
     if (last) sets = last.ex.sets.map(s => ({ reps: s.reps, weight: s.weight }));
-    else sets = [{reps:8,weight: def.equipment==='barbell'?95: (def.equipment==='bodyweight'?0:25)}, {reps:8,weight: def.equipment==='barbell'?95:(def.equipment==='bodyweight'?0:25)}, {reps:8,weight: def.equipment==='barbell'?95:(def.equipment==='bodyweight'?0:25)}];
+    else {
+      isNewExercise = true;
+      const tier = (profile.liftingExperience) || 'some';
+      const seed = (SEED_WEIGHTS[def.equipment] || SEED_WEIGHTS.machine)[tier];
+      sets = [{reps:8,weight:seed}, {reps:8,weight:seed}, {reps:8,weight:seed}];
+    }
     const workingWeight = sets.length ? sets[0].weight : 0;
     const warmupWeight = roundToHalf(workingWeight * 0.5);
     return {
@@ -1933,6 +1956,7 @@ function buildDraftSession(profile, sessions, overrideType, overrideDuration) {
       rir: null,
       warmupWeight,
       suggestedWeight: workingWeight,
+      isNewExercise,
       overload: overloadSuggestion(goal, id, sessions),
     };
   });
@@ -2511,7 +2535,8 @@ function renderExerciseList() {
     const def = exById(ex.exerciseId);
     const setStr = `${ex.sets.length} sets · ${ex.sets[0]?.reps||0} reps · ${ex.sets[0]?.weight||0} lb`;
     const arrow = ex.overload ? `<span class="arrow-up">${ex.overload.delta} <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" style="display:inline;vertical-align:-2px;"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span>` : '';
-    return `<div class="exercise-card" data-ex-idx="${draft.exercises.indexOf(ex)}">
+    return `<div class="exercise-card ${ex.done?'done':''}" data-ex-idx="${draft.exercises.indexOf(ex)}">
+      ${ex.done?`<div class="done-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></div>`:''}
       <div class="thumb" ${exerciseThumb(def)}>${def.imageUrl?'':svgPlaceholder()}<span class="mbadge">${muscleDisplayName(def.primaryMuscle)}</span></div>
       <div class="info">
         ${ex.isFocus?'<div class="focus-tag">Focus Exercise</div>':''}
@@ -2888,6 +2913,7 @@ function renderExerciseDetail() {
       <button class="action-pill" id="ap-more"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="5" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="19" r="1.4" fill="currentColor"/></svg>More</button>
     </div>
     <div class="note-banner accent">Warm-up: 1 × ${ex.warmupWeight} lb — not counted in volume</div>
+    ${(ex.isNewExercise && !anyComplete) ? `<div class="note-banner">Starting estimate based on your experience level — I'll adjust this for you after each session.</div>` : ''}
     ${overloadHTML}
     <div style="padding:0 20px;">
       <div class="field-label">Sets</div>
@@ -2967,10 +2993,18 @@ function wireExerciseDetailEvents(ex, def) {
     });
     inp.addEventListener('change', () => {
       const i = parseInt(inp.dataset.i,10);
-      if (inp.dataset.field === 'weight' && i === 0) {
-        ex.warmupWeight = roundToHalf(ex.sets[0].weight * 0.5);
-        renderExerciseDetail();
+      const field = inp.dataset.field;
+      let needsRerender = false;
+      for (let j = i+1; j < ex.sets.length; j++) {
+        if (ex.sets[j].completed) continue;
+        ex.sets[j][field] = ex.sets[i][field];
+        needsRerender = true;
       }
+      if (field === 'weight' && i === 0) {
+        ex.warmupWeight = roundToHalf(ex.sets[0].weight * 0.5);
+        needsRerender = true;
+      }
+      if (needsRerender) renderExerciseDetail();
     });
   });
 
@@ -3485,6 +3519,7 @@ function renderSettings() {
       ${settingsRow('goal','Goal', goal)}
       ${settingsRow('wpw','Workouts Per Week', String(p.daysPerWeek||3))}
       ${settingsRow('duration','Session Duration', (p.defaultDuration||60)+' min')}
+      ${settingsRow('experience','Lifting Experience', LIFTING_EXPERIENCE_DEFS.find(o=>o.v===(p.liftingExperience||'some'))?.label || 'Some experience')}
     </div>
 
     <div class="set-group-label">Training Format</div>
@@ -3585,6 +3620,10 @@ function handleSettingsRow(id) {
       String(p.daysPerWeek||3), async v => { p.daysPerWeek=parseInt(v,10); await DB.putProfile(p); }); break;
     case 'duration': openOptionsScreen('Session Duration', [['15 min',''],['30 min',''],['45 min',''],['60 min',''],['90 min','']],
       (p.defaultDuration||60)+' min', async v => { p.defaultDuration=parseInt(v,10); State.draftSession=null; await DB.putProfile(p); }); break;
+    case 'experience': openOptionsScreen('Lifting Experience',
+      LIFTING_EXPERIENCE_DEFS.map(o => [o.label, o.sub]),
+      (LIFTING_EXPERIENCE_DEFS.find(o=>o.v===(p.liftingExperience||'some'))||{}).label,
+      async v => { p.liftingExperience = (LIFTING_EXPERIENCE_DEFS.find(o=>o.label===v)||{}).v || 'some'; await DB.putProfile(p); }); break;
     case 'split': openOptionsScreen('Training Split',
       [['Push/Pull/Legs',''],['Upper/Lower',''],['Full Body',''],['Upper/Lower + Full Body',''],['Custom','']],
       (p.split&&p.split.type)||'Push/Pull/Legs', async v => {
@@ -3773,7 +3812,7 @@ async function selectProfile(pid) {
 function startWizard() {
   State.wizardStep = 0;
   State.wizardData = {
-    name:'', gender:null, goalId:'build-muscle', daysPerWeek:3, duration:45,
+    name:'', gender:null, liftingExperience:'some', goalId:'build-muscle', daysPerWeek:3, duration:45,
     gymName:'', apiKey:'', lastPeriodStart:'', cycleLength:'',
   };
   navigate('wizard');
@@ -3784,10 +3823,15 @@ const GENDER_DEFS = [
   { v:'Female', icon:'♀' },
 ];
 const GENDER_COLORS = { Male:'var(--accent)', Female:'var(--pink)' };
-const WIZARD_TITLES = ["What's your name?","About you","Your goal","Training days","Session length","Your gym","API key","Cycle tracking"];
+const WIZARD_TITLES = ["What's your name?","About you","Experience","Your goal","Training days","Session length","Your gym","API key","Cycle tracking"];
+const LIFTING_EXPERIENCE_DEFS = [
+  { v:'new', label:'New to this', sub:"I'm just getting started" },
+  { v:'some', label:'Some experience', sub:'I\'ve trained before' },
+  { v:'experienced', label:'Experienced', sub:'I lift regularly' },
+];
 
 function wizardTotalSteps() {
-  return State.wizardData.gender === 'Female' ? 8 : 7;
+  return State.wizardData.gender === 'Female' ? 9 : 8;
 }
 function renderWizardProgress() {
   const total = wizardTotalSteps();
@@ -3836,6 +3880,23 @@ function renderWizard() {
 
   } else if (State.wizardStep === 2) {
     wrap.innerHTML = `<div class="wizard-step">
+      <div class="field-label">How much experience do you have with lifting weights?</div>
+      <div class="tile-grid cols1" id="wiz-exp-grid">
+        ${LIFTING_EXPERIENCE_DEFS.map(o => `<button class="tile-opt row ${d.liftingExperience===o.v?'selected':''}" data-exp="${o.v}">
+          <div class="t">${o.label}</div><div class="s">${o.sub}</div>
+        </button>`).join('')}
+      </div>
+      <p style="font-size:11px;color:var(--text2);margin-top:10px;">This just sets a starting point for new exercises — I'll adjust the weights for you after each session.</p>
+      <button class="btn primary block" id="wizard-next" style="margin-top:20px;">Continue</button>
+    </div>`;
+    wrap.querySelectorAll('[data-exp]').forEach(btn => btn.addEventListener('click', () => {
+      d.liftingExperience = btn.dataset.exp;
+      wrap.querySelectorAll('[data-exp]').forEach(b => b.classList.toggle('selected', b===btn));
+    }));
+    document.getElementById('wizard-next').addEventListener('click', () => wizardNext(3));
+
+  } else if (State.wizardStep === 3) {
+    wrap.innerHTML = `<div class="wizard-step">
       <div class="field-label">What's your goal?</div>
       <div id="wiz-goal-list"></div>
       <button class="btn primary block" id="wizard-next" style="margin-top:20px;">Continue</button>
@@ -3852,9 +3913,9 @@ function renderWizard() {
       d.goalId = btn.dataset.goalId;
       renderWizard();
     }));
-    document.getElementById('wizard-next').addEventListener('click', () => wizardNext(3));
+    document.getElementById('wizard-next').addEventListener('click', () => wizardNext(4));
 
-  } else if (State.wizardStep === 3) {
+  } else if (State.wizardStep === 4) {
     wrap.innerHTML = `<div class="wizard-step">
       <div class="field-label">How many days per week can you train?</div>
       <div class="tile-grid cols3" id="wiz-days-grid">
@@ -3866,9 +3927,9 @@ function renderWizard() {
       d.daysPerWeek = parseInt(btn.dataset.days,10);
       wrap.querySelectorAll('[data-days]').forEach(b => b.classList.toggle('selected', b===btn));
     }));
-    document.getElementById('wizard-next').addEventListener('click', () => wizardNext(4));
+    document.getElementById('wizard-next').addEventListener('click', () => wizardNext(5));
 
-  } else if (State.wizardStep === 4) {
+  } else if (State.wizardStep === 5) {
     wrap.innerHTML = `<div class="wizard-step">
       <div class="field-label">How long are your sessions?</div>
       <div class="tile-grid cols3" id="wiz-dur-grid">
@@ -3880,20 +3941,20 @@ function renderWizard() {
       d.duration = parseInt(btn.dataset.dur,10);
       wrap.querySelectorAll('[data-dur]').forEach(b => b.classList.toggle('selected', b===btn));
     }));
-    document.getElementById('wizard-next').addEventListener('click', () => wizardNext(5));
+    document.getElementById('wizard-next').addEventListener('click', () => wizardNext(6));
 
-  } else if (State.wizardStep === 5) {
+  } else if (State.wizardStep === 6) {
     wrap.innerHTML = `<div class="wizard-step">
       <div class="field-label">What gym do you train at?</div>
       <input class="text-input" id="wizard-gym" placeholder="My Gym" value="${escapeHTML(d.gymName||'')}">
       <button class="btn primary block" id="wizard-next" style="margin-top:20px;">Continue</button>
       <button class="btn ghost block" id="wizard-skip" style="margin-top:10px;">Skip</button>
     </div>`;
-    const next = () => { d.gymName = document.getElementById('wizard-gym').value.trim() || 'My Gym'; wizardNext(6); };
+    const next = () => { d.gymName = document.getElementById('wizard-gym').value.trim() || 'My Gym'; wizardNext(7); };
     document.getElementById('wizard-next').addEventListener('click', next);
-    document.getElementById('wizard-skip').addEventListener('click', () => { d.gymName = 'My Gym'; wizardNext(6); });
+    document.getElementById('wizard-skip').addEventListener('click', () => { d.gymName = 'My Gym'; wizardNext(7); });
 
-  } else if (State.wizardStep === 6) {
+  } else if (State.wizardStep === 7) {
     wrap.innerHTML = `<div class="wizard-step">
       <div class="field-label">Claude API Key (optional)</div>
       <input class="text-input" type="password" id="wizard-key" placeholder="sk-ant-..." value="${escapeHTML(d.apiKey||'')}">
@@ -3907,15 +3968,15 @@ function renderWizard() {
     document.getElementById('wizard-key-link').addEventListener('click', () => window.open('https://console.anthropic.com/keys','_blank'));
     const next = () => {
       d.apiKey = document.getElementById('wizard-key').value.trim();
-      if (d.gender === 'Female') wizardNext(7); else finishWizard();
+      if (d.gender === 'Female') wizardNext(8); else finishWizard();
     };
     document.getElementById('wizard-next').addEventListener('click', next);
     document.getElementById('wizard-skip').addEventListener('click', () => {
       d.apiKey = '';
-      if (d.gender === 'Female') wizardNext(7); else finishWizard();
+      if (d.gender === 'Female') wizardNext(8); else finishWizard();
     });
 
-  } else if (State.wizardStep === 7) {
+  } else if (State.wizardStep === 8) {
     wrap.innerHTML = `<div class="wizard-step">
       <div class="field-label">Last period start (optional)</div>
       <input class="date-input" id="wizard-period" type="date" value="${d.lastPeriodStart||''}">
@@ -3943,6 +4004,7 @@ async function finishWizard() {
   if (profile) {
     profile.name = d.name || profile.name || 'Athlete';
     profile.gender = (d.gender||'').toLowerCase();
+    profile.liftingExperience = d.liftingExperience || 'some';
     profile.avatarColor = GENDER_COLORS[d.gender] || profile.avatarColor;
     const g = goalById(d.goalId);
     if (g) { profile.goalId = g.id; profile.goalType = g.type; profile.defaultGoal = g.sessionGoal || profile.defaultGoal; }
@@ -3966,7 +4028,7 @@ document.getElementById('btn-welcome-continue').addEventListener('click', async 
     split:null, daysPerWeek:3, gymDays:[], defaultGoal:'Hypertrophy',
     goalId:'build-muscle', goalType:'manual', aiPlan:null, defaultDuration:45,
     barWeight:45, weightUnit:'lb', gymName:'My Gym', apiKey:'', weekSchedule:{},
-    cycleLength:28, lastPeriodStart:null, showCycleBanner:true, createdAt:Date.now(),
+    cycleLength:28, lastPeriodStart:null, showCycleBanner:true, liftingExperience:'some', createdAt:Date.now(),
   };
   await DB.putProfile(profile);
   State.tempNewProfileId = id;
@@ -3975,7 +4037,7 @@ document.getElementById('btn-welcome-continue').addEventListener('click', async 
 document.getElementById('wizard-back').addEventListener('click', () => {
   if (State.wizardStep === 0) { navigate('welcome'); return; }
   let prev = State.wizardStep - 1;
-  if (prev === 7 && State.wizardData.gender !== 'Female') prev = 6;
+  if (prev === 8 && State.wizardData.gender !== 'Female') prev = 7;
   State.wizardStep = prev;
   renderWizard();
 });
