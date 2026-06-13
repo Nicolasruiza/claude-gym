@@ -772,6 +772,7 @@ svg{display:block;}
       <div class="pill-dropdown" id="title-dropdown">
         <button id="dd-settings">Settings <span class="chev">›</span></button>
         <button id="dd-log">Export <span class="chev">›</span></button>
+        <button id="dd-exit" style="display:none;color:var(--red);">Exit Workout <span class="chev">›</span></button>
       </div>
     </div>
   </div>
@@ -1070,6 +1071,15 @@ svg{display:block;}
     <button class="sheet-close" data-close-sheet><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
   </div>
   <div class="sheet-body" id="goal-options"></div>
+</div>
+
+<!-- One-Off Session Setup -->
+<div class="sheet full" id="sheet-oneoff">
+  <div class="sheet-handle"></div>
+  <div class="sheet-head"><h3>Create One-Off Session</h3>
+    <button class="sheet-close" data-close-sheet><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="sheet-body" id="oneoff-body"></div>
 </div>
 
 <!-- Swap Session Sheet -->
@@ -2685,6 +2695,7 @@ function renderWorkout() {
 
   const todaySession = State.sessions.find(s => s.completedAt && s.date === todayStr());
   if (todaySession && !State.draftSession) {
+    document.getElementById('dd-exit').style.display = 'none';
     renderWorkoutDoneState(todaySession);
     return;
   }
@@ -2692,6 +2703,7 @@ function renderWorkout() {
 
   if (!State.draftSession) State.draftSession = buildDraftSession(State.profile, State.sessions);
   const draft = State.draftSession;
+  document.getElementById('dd-exit').style.display = draft.planMode ? '' : 'none';
   document.getElementById('workout-title').textContent = draft.type;
   renderWorkoutCycleCard();
   const listEl = document.getElementById('workout-exercise-list');
@@ -2763,9 +2775,72 @@ function renderPlanModeChoice() {
     renderWorkout();
   });
   document.getElementById('btn-plan-custom').addEventListener('click', () => {
+    openOneoffSheet();
+  });
+}
+
+const SPLIT_TYPE_OPTIONS = ['Full Body','Upper','Lower','Push','Pull','Legs','Core Strength'];
+
+function openOneoffSheet() {
+  const draft = State.draftSession;
+  const sel = State.oneoffSel = State.oneoffSel || {
+    duration: draft.duration,
+    goal: draft.goal,
+    type: draft.type,
+  };
+  const body = document.getElementById('oneoff-body');
+  const durations = [15,30,45,60,90];
+  const goals = ['Hypertrophy','Strength','Power'];
+  body.innerHTML = `
+    <div class="sheet-section-title">Duration</div>
+    <div class="tile-grid cols3" id="oneoff-duration">
+      ${durations.map(d => `<button class="tile-opt ${sel.duration===d?'selected':''}" data-dur="${d}"><div class="t">${d}</div><div class="s">min</div></button>`).join('')}
+    </div>
+    <div class="sheet-section-title">Goal</div>
+    <div class="tile-grid cols3" id="oneoff-goal">
+      ${goals.map(g => `<button class="tile-opt ${sel.goal===g?'selected':''}" data-goal="${g}"><div class="t">${g}</div></button>`).join('')}
+    </div>
+    <div class="sheet-section-title">Session Type</div>
+    <div class="tile-grid cols2" id="oneoff-type">
+      ${SPLIT_TYPE_OPTIONS.map(t => `<button class="tile-opt ${sel.type===t?'selected':''}" data-type="${t}"><div class="t">${t}</div></button>`).join('')}
+    </div>
+    <button class="btn primary block" id="btn-oneoff-build" style="margin-top:20px;">Build Routine</button>
+  `;
+  body.querySelectorAll('[data-dur]').forEach(btn => btn.addEventListener('click', () => {
+    sel.duration = parseInt(btn.dataset.dur,10);
+    openOneoffSheet();
+  }));
+  body.querySelectorAll('[data-goal]').forEach(btn => btn.addEventListener('click', () => {
+    sel.goal = btn.dataset.goal;
+    openOneoffSheet();
+  }));
+  body.querySelectorAll('[data-type]').forEach(btn => btn.addEventListener('click', () => {
+    sel.type = btn.dataset.type;
+    openOneoffSheet();
+  }));
+  document.getElementById('btn-oneoff-build').addEventListener('click', () => {
+    closeSheet('sheet-oneoff');
+    State.draftSession = buildDraftSession(State.profile, State.sessions, sel.type, sel.duration);
+    const draft = State.draftSession;
+    if (sel.goal !== draft.goal) {
+      const oldGoal = draft.goal;
+      draft.goal = sel.goal;
+      const targetReps = GOAL_REP_DEFAULT[sel.goal] || 10;
+      const loadFactor = (GOAL_LOAD_MULTIPLIER[sel.goal]||1) / (GOAL_LOAD_MULTIPLIER[oldGoal]||1);
+      draft.exercises.forEach(ex => {
+        ex.sets.forEach(s => {
+          s.reps = targetReps;
+          if (loadFactor !== 1 && s.weight) s.weight = roundToHalf(s.weight * loadFactor);
+        });
+        if (loadFactor !== 1) ex.warmupWeight = roundToHalf(ex.warmupWeight * loadFactor);
+      });
+      draft.restTimerSeconds = GOAL_REST_DEFAULT[sel.goal] || 90;
+    }
     draft.planMode = 'custom';
+    State.oneoffSel = null;
     renderWorkout();
   });
+  openSheet('sheet-oneoff');
 }
 
 function renderRestDayCard() {
@@ -4658,6 +4733,14 @@ document.getElementById('home-gear-btn').addEventListener('click', (e) => {
 });
 document.getElementById('dd-log').addEventListener('click', () => { document.getElementById('title-dropdown').classList.remove('open'); navigate('log'); });
 document.getElementById('dd-settings').addEventListener('click', () => { document.getElementById('title-dropdown').classList.remove('open'); navigate('settings'); });
+document.getElementById('dd-exit').addEventListener('click', () => {
+  document.getElementById('title-dropdown').classList.remove('open');
+  if (!window.confirm('Exit this workout? Any progress so far will be lost.')) return;
+  resetStartButton();
+  State.draftSession = null;
+  State.oneoffSel = null;
+  renderWorkout();
+});
 document.addEventListener('click', (e) => {
   const dd = document.getElementById('title-dropdown');
   if (dd && dd.classList.contains('open') && !dd.contains(e.target) && e.target.id !== 'home-gear-btn' && !document.getElementById('home-gear-btn').contains(e.target)) {
