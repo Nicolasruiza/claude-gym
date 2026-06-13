@@ -2463,9 +2463,17 @@ function renderMetaPills() {
     if (timerEl) timerEl.style.display = '';
     return;
   }
+  if (timerEl) timerEl.style.display = 'none';
+
+  if (draft.planMode !== 'custom') {
+    el.style.display = 'none';
+    el.innerHTML = '';
+    if (swapBtn) swapBtn.style.display = 'none';
+    return;
+  }
+
   el.style.display = '';
   if (swapBtn) swapBtn.style.display = '';
-  if (timerEl) timerEl.style.display = 'none';
   el.innerHTML = `
     <button class="pill tappable" id="pill-duration">${draft.duration} min</button>
     <button class="pill accent tappable" id="pill-goal">${draft.goal}</button>
@@ -2497,6 +2505,8 @@ function openDurationSheet() {
 }
 const GOAL_REP_DEFAULT = { Hypertrophy:10, Strength:5, Power:4 };
 const GOAL_REST_DEFAULT = { Hypertrophy:90, Strength:180, Power:240 };
+// Relative load (%1RM) by goal — Strength/Power train heavier for fewer reps than Hypertrophy
+const GOAL_LOAD_MULTIPLIER = { Hypertrophy:1.0, Strength:1.15, Power:1.1 };
 function openGoalSheet() {
   const wrap = document.getElementById('goal-options');
   const goals = ['Hypertrophy','Strength','Power'];
@@ -2509,10 +2519,17 @@ function openGoalSheet() {
   }).join('');
   wrap.querySelectorAll('[data-goal]').forEach(btn => btn.addEventListener('click', () => {
     const g = btn.dataset.goal;
+    const oldGoal = State.draftSession.goal;
     State.draftSession.goal = g;
     const targetReps = GOAL_REP_DEFAULT[g] || 10;
+    const loadFactor = (GOAL_LOAD_MULTIPLIER[g]||1) / (GOAL_LOAD_MULTIPLIER[oldGoal]||1);
     State.draftSession.exercises.forEach(ex => {
-      ex.sets.forEach(s => { if (!s.completed) s.reps = targetReps; });
+      ex.sets.forEach(s => {
+        if (s.completed) return;
+        s.reps = targetReps;
+        if (loadFactor !== 1 && s.weight) s.weight = roundToHalf(s.weight * loadFactor);
+      });
+      if (loadFactor !== 1) ex.warmupWeight = roundToHalf(ex.warmupWeight * loadFactor);
     });
     State.draftSession.restTimerSeconds = GOAL_REST_DEFAULT[g] || 90;
     closeSheet('sheet-goal');
@@ -2688,6 +2705,19 @@ function renderWorkout() {
   }
   document.getElementById('workout-sub').textContent = `${draft.exercises.length} exercises · ${State.profile.gymName||'My Gym'}`;
   renderPhaseNote();
+
+  if (!draft.planMode && !draft.startedAt && !isRestDayToday()) {
+    document.querySelector('.fixed-bottom-btn').style.display = 'none';
+    const swapBtn = document.getElementById('workout-swap-btn');
+    if (swapBtn) swapBtn.style.display = 'none';
+    const pillsEl = document.getElementById('workout-meta-pills');
+    pillsEl.style.display = 'none';
+    pillsEl.innerHTML = '';
+    document.getElementById('workout-target-bar').innerHTML = '';
+    renderPlanModeChoice();
+    return;
+  }
+
   renderMetaPills();
   renderTargetBar();
 
@@ -2716,6 +2746,26 @@ function renderWorkoutDoneState(session) {
       <div class="cch" style="font-size:24px;color:var(--accent);">Workout Complete</div>
       <p style="color:var(--text2);font-size:13px;margin:6px 0 0;">Nice work — see you next session.</p>
     </div>`;
+}
+
+function renderPlanModeChoice() {
+  const el = document.getElementById('workout-exercise-list');
+  const draft = State.draftSession;
+  el.innerHTML = `
+    <div class="cardio-card" style="text-align:center;">
+      <div class="cch" style="font-size:20px;">How do you want to train today?</div>
+      <p style="color:var(--text2);font-size:13px;margin:6px 0 18px;">${draft.type} · ${draft.goal} · ${draft.duration} min · ${draft.exercises.length} exercises</p>
+      <button class="btn primary block" id="btn-plan-follow" style="margin-bottom:10px;">Follow Today's Plan</button>
+      <button class="btn ghost block" id="btn-plan-custom">Create One-Off Session</button>
+    </div>`;
+  document.getElementById('btn-plan-follow').addEventListener('click', () => {
+    draft.planMode = 'follow';
+    renderWorkout();
+  });
+  document.getElementById('btn-plan-custom').addEventListener('click', () => {
+    draft.planMode = 'custom';
+    renderWorkout();
+  });
 }
 
 function renderRestDayCard() {
